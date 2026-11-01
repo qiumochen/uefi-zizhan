@@ -1,6 +1,23 @@
-# Project Silicium UEFI for Nothing Phone (2)
+# uefi-zizhan: Xiaomi MIX Fold 2
 
 [简体中文](README.md) | **English**
+
+UEFI firmware for the Xiaomi MIX Fold 2 (zizhan, SM8475), derived from [uefi-pong](https://github.com/Chengdong-Yu/uefi-pong) and used by [UniXNU-zizhan](https://github.com/qiumochen/UniXNU-zizhan). The board files are in `Platforms/Xiaomi/zizhanPkg`:
+
+- the Qualcomm DXE binaries come from `Binaries/pong` (same SM8475);
+- the memory map follows the stock `uefiplat.cfg`: PIL Reserved is `0x1DC00000`, Demura and QTEE are removed;
+- `SimpleFbDxe` scans out the inner-panel splash the bootloader leaves at `0xb8000000`, 2160×1916;
+- the FV embeds the phone's live device tree (`FdtBlob/sm8475-xiaomi-zizhan.dtb`, also `Resources/DTBs/zizhan.dtb`);
+- `RamoopsView` and `RamoopsDump` read the ramoops console back after a reset (the latter writes it to the logfs partition).
+
+The build actually used is UniXNU-zizhan's [`tools/zizhan/mac/build_fw.sh`](https://github.com/qiumochen/UniXNU-zizhan/blob/main/tools/zizhan/mac/build_fw.sh) (plain EDK II on `Platforms/Xiaomi/zizhanPkg/zizhan.dsc`) and `build_bootimg.py`. Boot only with `fastboot boot`; no partition is written.
+
+The original uefi-pong README follows.
+
+---
+
+# Project Silicium UEFI for Nothing Phone (2)
+
 
 UEFI firmware source for Nothing Phone (2), codename **Pong**, SoC **SM8475**. This repository contains the Mu-Silicium UEFI tree and the Pong board package used by UniXNU.
 

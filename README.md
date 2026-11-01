@@ -1,6 +1,23 @@
-# Project Silicium UEFI：Nothing Phone (2)
+# uefi-zizhan：小米 MIX Fold 2
 
 **简体中文** | [English](README_EN.md)
+
+小米 MIX Fold 2（zizhan，SM8475）的 UEFI 固件，从 [uefi-pong](https://github.com/Chengdong-Yu/uefi-pong) 派生，供 [UniXNU-zizhan](https://github.com/qiumochen/UniXNU-zizhan) 使用。板级文件在 `Platforms/Xiaomi/zizhanPkg`：
+
+- 高通 DXE 沿用 `Binaries/pong`（同为 SM8475）；
+- 内存表按原厂 `uefiplat.cfg` 修改：PIL Reserved 为 `0x1DC00000`，去掉 Demura 和 QTEE；
+- `SimpleFbDxe` 直接使用 bootloader 留下的内屏画面，framebuffer 在 `0xb8000000`，2160×1916；
+- FV 内嵌手机的 live 设备树（`FdtBlob/sm8475-xiaomi-zizhan.dtb`，同一份也在 `Resources/DTBs/zizhan.dtb`）；
+- `RamoopsView` 和 `RamoopsDump` 在复位后读回 ramoops 日志（后者写入 logfs 分区）。
+
+实际使用的构建脚本是 UniXNU-zizhan 的 [`tools/zizhan/mac/build_fw.sh`](https://github.com/qiumochen/UniXNU-zizhan/blob/main/tools/zizhan/mac/build_fw.sh)（直接调用 EDK II，构建 `Platforms/Xiaomi/zizhanPkg/zizhan.dsc`）和 `build_bootimg.py`。只用 `fastboot boot` 临时启动，不写入任何分区。
+
+以下为上游 uefi-pong 的原始说明。
+
+---
+
+# Project Silicium UEFI：Nothing Phone (2)
+
 
 Nothing Phone (2)（代号 **Pong**，SoC **SM8475**）的 UEFI 固件源码。本仓库包含 Mu-Silicium UEFI 工程和供 UniXNU 使用的 Pong 板级配置。
 
