@@ -1,0 +1,19 @@
+## @file
+#  Xiaomi MIX Fold 2 (zizhan, SM8475) platform package, derived from pongPkg.
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  DEC_SPECIFICATION                   = 0x00010005
+  PACKAGE_NAME                        = zizhanPkg
+  PACKAGE_GUID                        = 7A1F2C3D-5E6B-4C2A-9D41-2F6E8A3B1C50
+  PACKAGE_VERSION                     = 0.1
+
+[Includes]
+  Include                              # Root Include for the Package
+
+[Guids]
+  ## Package token space. Same value as PLATFORM_GUID in zizhan.dsc.
+  gZizhanPkgTokenSpaceGuid              = { 0x0x7A1F2C3D, 0x5E6B, 0x4C2A, { 0x9D, 0x41, 0x2F, 0x6E, 0x8A, 0x3B, 0x1C, 0x50 } }

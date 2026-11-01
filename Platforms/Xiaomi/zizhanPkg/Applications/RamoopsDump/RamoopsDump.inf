@@ -1,0 +1,33 @@
+## @file
+#  Save the XNU ramoops console left in DRAM into logfs:\XNULOG.TXT, then reset into Android.
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+[Defines]
+  INF_VERSION    = 0x00010005
+  BASE_NAME      = RamoopsDump
+  FILE_GUID      = 8C2D4E19-7A3B-4F60-B1E2-5D9A0C7F3E21
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 1.0
+  ENTRY_POINT    = RamoopsDumpEntry
+
+[Sources]
+  RamoopsDump.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  UefiLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  PrintLib
+  IoLib
+
+[Protocols]
+  gEfiPartitionInfoProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid

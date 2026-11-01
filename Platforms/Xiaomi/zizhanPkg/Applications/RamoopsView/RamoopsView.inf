@@ -1,0 +1,31 @@
+## @file
+#  Show the XNU ramoops console left in DRAM by the previous boot, in large text for a camera.
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+[Defines]
+  INF_VERSION    = 0x00010005
+  BASE_NAME      = RamoopsView
+  FILE_GUID      = 3B6F2A71-0C4D-4E8B-9A15-6D2E7F1C8A40
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 1.0
+  ENTRY_POINT    = RamoopsViewEntry
+
+[Sources]
+  RamoopsView.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  PrintLib
+  IoLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid

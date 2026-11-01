@@ -1,0 +1,1 @@
+sm8475-xiaomi-zizhan.dtb: live /sys/firmware/fdt from the device (MIUI V14.0.15.0.TLRCNXM, slot b), 2026-10-28.
