@@ -106,7 +106,7 @@ def parse_pongfat_ios(path):
     return ramdisk
 
 
-def build_bootshim(out):
+def build_bootshim(out, fdt_patch):
     make = which("make", "/usr/bin/make")
     ld = which("ld.lld", "/opt/homebrew/bin/ld.lld")
     objcopy = which("llvm-objcopy", "/opt/homebrew/opt/llvm/bin/llvm-objcopy")
@@ -114,7 +114,8 @@ def build_bootshim(out):
     objdump = which("llvm-objdump", "/opt/homebrew/opt/llvm/bin/llvm-objdump")
     run([make, "-C", str(ROOT / "BootShim"), "clean"])
     run([make, "-C", str(ROOT / "BootShim"), "REQUIRES_KERNEL_HEADER=1",
-         "FD_BASE=0xA7100000", "FD_SIZE=0x300000", "LD=" + ld, "OBJCOPY=" + objcopy])
+         "FD_BASE=0xA7100000", "FD_SIZE=0x300000", "ZIZHAN_FDT_PATCH=%d" % fdt_patch,
+         "LD=" + ld, "OBJCOPY=" + objcopy])
     elf = ROOT / "BootShim/BootShim.elf"
     binary = (ROOT / "BootShim/BootShim.bin").read_bytes()
     symbols = {}
@@ -123,7 +124,7 @@ def build_bootshim(out):
         if len(parts) == 3:
             symbols[parts[2]] = int(parts[0], 16)
     for name in ("_Head", "_StackSize", "_AndroidOffset", "_PongFatOffset",
-                 "_PongFatSize", "_Payload", "_MagicHit", "_NoMagic"):
+                 "_PongFatSize", "_FdOffset", "_Payload", "_MagicHit", "_NoMagic"):
         if name not in symbols:
             raise SystemExit("BootShim symbol missing: %s" % name)
     if symbols["_Payload"] != len(binary):
@@ -194,16 +195,16 @@ def read_ios_config(ios_image, out):
         return cfg_path.read_text()
 
 
-def default_entry():
+def default_entry(explicit=None):
     # Default boot entry: android (the user decision for M3). M3_DEFAULT=pong-xnu only for the
     # unattended fastboot-boot test that exercises the iPadOS path of the new BootShim.
-    value = os.environ.get("M3_DEFAULT", "android")
+    value = explicit if explicit is not None else os.environ.get("M3_DEFAULT", "android")
     if value not in ("android", "pong-xnu"):
         raise SystemExit("M3_DEFAULT must be android or pong-xnu")
     return value
 
 
-def new_config(existing):
+def new_config(existing, default, android):
     match = re.search(r"\[\[entry\]\]\s*\nid = \"pong-xnu\".*?(?=\n\[\[|\Z)",
                       existing, re.S)
     if not match:
@@ -213,27 +214,31 @@ def new_config(existing):
         "version = 1\n"
         "[boot]\n"
         "timeout = 10\n"
-        "default = \"" + default_entry() + "\"\n"
+        "default = \"" + default + "\"\n"
         "[kits]\n"
         "autoload = false\n"
         "[[driver]]\n"
         "path = \"DarwinBoot24.efi\"\n"
         "connect = false\n"
-        "[[entry]]\n"
-        "id = \"android\"\n"
-        "title = \"Android\"\n"
-        "type = \"efi\"\n"
-        "path = \"AndroidHandoff.efi\"\n"
+        + (
+            "[[entry]]\n"
+            "id = \"android\"\n"
+            "title = \"Android\"\n"
+            "type = \"efi\"\n"
+            "path = \"AndroidHandoff.efi\"\n"
+            if android else ""
+        )
         + ios + "\n"
     )
 
 
 def patch_shim(shim, symbols, android_offset, pongfat_offset, pongfat_size,
-               kernel_field_size):
+               fd_offset, kernel_field_size):
     data = bytearray(shim)
     for name, value in (("_AndroidOffset", android_offset),
                         ("_PongFatOffset", pongfat_offset),
                         ("_PongFatSize", pongfat_size),
+                        ("_FdOffset", fd_offset),
                         ("_StackSize", kernel_field_size)):
         offset = symbols[name]
         if offset + 8 > len(data):
@@ -244,51 +249,81 @@ def patch_shim(shim, symbols, android_offset, pongfat_offset, pongfat_size,
 
 def make_image(args, out):
     boot = parse_boot(args.stock_boot)
+    default = default_entry(args.default_entry)
+    if default == "android" and not args.android:
+        raise SystemExit("default android requires --android 1")
     pongfat = update_pongfat(
         parse_pongfat_ios(args.ios_image),
         build_handoff(out),
-        new_config(read_ios_config(args.ios_image, out)),
+        new_config(read_ios_config(args.ios_image, out), default, bool(args.android)),
         out,
     )
     (out / "pongfat.ramdisk").write_bytes(pongfat)
-    shim, symbols = build_bootshim(out)
+    shim, symbols = build_bootshim(out, args.fdt_patch)
     fd = Path(args.uefi_fd).read_bytes()
     dtb = Path(args.dtb).read_bytes()
     if len(fd) != 0x300000:
         raise SystemExit("UEFI FD is %d bytes, expected 0x300000" % len(fd))
-    base = len(shim) + len(fd) + len(dtb)
-    pongfat_offset = len(fd) + len(dtb)
-    android_offset = align(base + len(pongfat), 2 * 1024 * 1024)
-    field = (
-        shim + fd + dtb + pongfat
-        + bytes(android_offset - (base + len(pongfat)))
-        + boot["kernel"]
-    )
+    ramdisk = pongfat if args.ramdisk == "pongfat" else boot["ramdisk"]
+    pongfat_in_field = args.layout != "b1"
+    if args.layout == "b1":
+        if args.fdt_patch or args.android or args.ramdisk != "pongfat":
+            raise SystemExit("b1 requires --fdt-patch 0 --android 0 --ramdisk pongfat")
+        field = shim + fd + dtb
+        pongfat_offset = 0
+        fd_offset = 0
+        android_offset = 0
+    elif args.layout == "pongfat-first":
+        if args.fdt_patch != 1:
+            raise SystemExit("pongfat-first requires --fdt-patch 1")
+        pad = align(len(shim), PAGE) - len(shim)
+        pongfat_offset = pad
+        fd_offset = pad + len(pongfat)
+        field = shim + bytes(pad) + pongfat + fd + dtb
+        android_offset = align(len(field), 2 * 1024 * 1024) if args.android else 0
+        if args.android:
+            field += bytes(android_offset - len(field)) + boot["kernel"]
+    else:
+        if args.ramdisk != "stock":
+            raise SystemExit("standard layout requires --ramdisk stock")
+        field = shim + fd + dtb + pongfat
+        pongfat_offset = len(fd) + len(dtb)
+        fd_offset = 0
+        android_offset = align(len(field), 2 * 1024 * 1024) if args.android else 0
+        if args.android:
+            field += bytes(android_offset - len(field)) + boot["kernel"]
+    if not args.android:
+        android_offset = symbols["_Dead"]  # trap if a stray magic ever arrives
     shim = patch_shim(shim, symbols, android_offset, pongfat_offset,
-                      len(pongfat), len(field))
+                      len(pongfat) if pongfat_in_field else 0, fd_offset, len(field))
     field = shim + field[len(shim):]
     if len(field) > 199364608:
         raise SystemExit("kernel field %d exceeds the 190.13 MiB budget" % len(field))
     if field[:8] == b"ANDROID!":
         raise SystemExit("kernel field unexpectedly starts with ANDROID!")
-    if field[android_offset:android_offset + 2] != b"MZ":
-        raise SystemExit("Android Image does not start with MZ")
-    if field[android_offset + 56:android_offset + 60] != b"ARMd":
-        raise SystemExit("Android Image ARM64 magic missing")
-    if field[len(shim) + pongfat_offset:len(shim) + pongfat_offset + 8] != PONGFAT_MAGIC:
-        raise SystemExit("PONGFAT is not at _Payload + _PongFatOffset")
+    if args.android:
+        if field[android_offset:android_offset + 2] != b"MZ":
+            raise SystemExit("Android Image does not start with MZ")
+        if field[android_offset + 56:android_offset + 60] != b"ARMd":
+            raise SystemExit("Android Image ARM64 magic missing")
+    if pongfat_in_field:
+        at = symbols["_Payload"] + pongfat_offset
+        if field[at:at + 8] != PONGFAT_MAGIC:
+            raise SystemExit("PONGFAT is not at _Payload + _PongFatOffset")
+    elif ramdisk[:8] != PONGFAT_MAGIC:
+        raise SystemExit("B1 ramdisk is not PONGFAT1")
 
     header = bytearray(boot["header"])
     struct.pack_into("<I", header, 8, len(field))
-    struct.pack_into("<I", header, 12, len(boot["ramdisk"]))
+    struct.pack_into("<I", header, 12, len(ramdisk))
     struct.pack_into("<I", header, 1580, PAGE)
 
     image = bytearray(PARTITION)
     image[0:PAGE] = header
     image[PAGE:PAGE + len(field)] = field
     ramdisk_at = PAGE + align(len(field), PAGE)
-    image[ramdisk_at:ramdisk_at + len(boot["ramdisk"])] = boot["ramdisk"]
-    signature_at = ramdisk_at + align(len(boot["ramdisk"]), PAGE)
+    image[ramdisk_at:ramdisk_at + len(ramdisk)] = ramdisk
+    signature_at = ramdisk_at + align(len(ramdisk), PAGE)
     image[signature_at:signature_at + PAGE] = boot["signature"]
     vbmeta_at = signature_at + PAGE
     image[vbmeta_at:vbmeta_at + 0x380] = boot["vbmeta"]
@@ -310,6 +345,13 @@ def make_image(args, out):
         "android_offset": android_offset,
         "pongfat_offset": pongfat_offset,
         "pongfat": pongfat,
+        "layout": args.layout,
+        "fdt_patch": args.fdt_patch,
+        "android": 1 if args.android else 0,
+        "ramdisk_kind": args.ramdisk,
+        "pongfat_in_field": 1 if pongfat_in_field else 0,
+        "fd_offset": fd_offset,
+        "default_entry": default,
         "ramdisk_at": ramdisk_at,
         "signature_at": signature_at,
         "vbmeta_at": vbmeta_at,
@@ -317,6 +359,7 @@ def make_image(args, out):
         "fd": fd,
         "dtb": dtb,
         "boot": boot,
+        "ramdisk": ramdisk,
     }
 
 
@@ -327,6 +370,12 @@ def main():
     parser.add_argument("--ios-image", required=True)
     parser.add_argument("--stock-boot", required=True)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--layout", choices=("standard", "pongfat-first", "b1"),
+                        default="standard")
+    parser.add_argument("--fdt-patch", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--android", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--ramdisk", choices=("stock", "pongfat"), default="stock")
+    parser.add_argument("--default-entry", choices=("android", "pong-xnu"), default=None)
     args = parser.parse_args()
     out = Path(args.out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -343,16 +392,24 @@ def main():
         "bootshim": {"bytes": len(result["shim"]), "sha256": sha256(result["shim"]),
                      "symbols": {k: v for k, v in result["symbols"].items() if k in
                                  ("_Head", "_StackSize", "_AndroidOffset", "_PongFatOffset",
-                                  "_PongFatSize", "_Payload", "_MagicHit", "_NoMagic")}},
+                                  "_PongFatSize", "_FdOffset", "_Payload", "_MagicHit",
+                                  "_NoMagic", "_Dead")}},
         "android_handoff": {"bytes": (out / "AndroidHandoff.efi").stat().st_size,
                             "sha256": sha256((out / "AndroidHandoff.efi").read_bytes())},
         "pongfat": {"bytes": len(result["pongfat"]), "sha256": sha256(result["pongfat"])},
         "layout": {
+            "kind": result["layout"],
+            "fdt_patch": result["fdt_patch"],
+            "android": result["android"],
+            "ramdisk_kind": result["ramdisk_kind"],
+            "pongfat_in_field": result["pongfat_in_field"],
+            "fd_offset": result["fd_offset"],
+            "default_entry": result["default_entry"],
             "kernel_field_bytes": len(result["field"]),
             "android_offset": result["android_offset"],
             "pongfat_offset": result["pongfat_offset"],
             "ramdisk_offset": result["ramdisk_at"],
-            "ramdisk_bytes": len(result["boot"]["ramdisk"]),
+            "ramdisk_bytes": len(result["ramdisk"]),
             "signature_offset": result["signature_at"],
             "vbmeta_offset": result["vbmeta_at"],
             "original_image_size": result["original_image_size"],

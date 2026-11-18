@@ -38,6 +38,7 @@ _NoMagic:
    * kernel field. Patch the ABL FDT's /chosen linux,initrd-start/end to point
    * at it before entering the existing UEFI; the Android branch never runs
    * this and therefore keeps the stock initrd. */
+#if ZIZHAN_FDT_PATCH == 1
   mov   x19, x0                 /* ABL FDT */
   mov   x20, x1                 /* _Payload */
   mov   x21, sp
@@ -54,7 +55,9 @@ _NoMagic:
   mov   sp, x21
   mov   x0, x19                 /* UEFI still needs the original FDT in x0 */
   mov   x1, x20
-  mov   x4, x1
+#endif
+  ldr   x4, _FdOffset
+  add   x4, x1, x4
   ldr   x5, =FD_BASE
   cmp   x4, x5
   beq   _Entry
@@ -109,5 +112,7 @@ _PongFatOffset:
   .quad 0x2222222222222222
 _PongFatSize:
   .quad 0x3333333333333333
+_FdOffset:
+  .quad 0x4444444444444444
 
 .ltorg
