@@ -136,7 +136,12 @@ def build_bootshim(out, fdt_patch):
     return binary, symbols
 
 
-def build_handoff(out):
+def build_handoff(out, handoff=None):
+    efi = out / "AndroidHandoff.efi"
+    if handoff:
+        data = Path(handoff).read_bytes()
+        efi.write_bytes(data)
+        return data
     clang = which("clang", "/usr/bin/clang")
     lld_link = which("lld-link", "/opt/homebrew/bin/lld-link")
     includes = [
@@ -144,7 +149,6 @@ def build_handoff(out):
         "-I" + str(ROOT / "Mu_Basecore/MdePkg/Include/AArch64"),
     ]
     obj = out / "AndroidHandoff.obj"
-    efi = out / "AndroidHandoff.efi"
     run([clang, "--target=aarch64-windows-msvc", "-ffreestanding", "-fshort-wchar",
          "-fno-stack-protector", "-mno-red-zone", *includes, "-c",
          str(ROOT / ANDROID_HANDOFF), "-o", str(obj)])
@@ -167,11 +171,14 @@ def update_pongfat(pongfat, app, config, out):
         fat_path.write_bytes(fat)
         app_path = out / "AndroidHandoff.efi"
         app_path.write_bytes(app)
-        run(["mcopy", "-i", str(fat_path), "-o", str(app_path),
-             "::/EFI/UniXNU/AndroidHandoff.efi"], env=env)
         cfg_path = temp / "unixnu.toml"
         cfg_path.write_text(config)
-        run(["mcopy", "-i", str(fat_path), "-o", str(cfg_path),
+        epoch = 1700000000
+        os.utime(app_path, (epoch, epoch))
+        os.utime(cfg_path, (epoch, epoch))
+        run(["mcopy", "-m", "-i", str(fat_path), "-o", str(app_path),
+             "::/EFI/UniXNU/AndroidHandoff.efi"], env=env)
+        run(["mcopy", "-m", "-i", str(fat_path), "-o", str(cfg_path),
              "::/EFI/UniXNU/unixnu.toml"], env=env)
         fat = fat_path.read_bytes()
     if len(fat) != 96 * 1024 * 1024:
@@ -254,7 +261,7 @@ def make_image(args, out):
         raise SystemExit("default android requires --android 1")
     pongfat = update_pongfat(
         parse_pongfat_ios(args.ios_image),
-        build_handoff(out),
+        build_handoff(out, args.handoff),
         new_config(read_ios_config(args.ios_image, out), default, bool(args.android)),
         out,
     )
@@ -376,6 +383,8 @@ def main():
     parser.add_argument("--android", type=int, choices=(0, 1), default=1)
     parser.add_argument("--ramdisk", choices=("stock", "pongfat"), default="stock")
     parser.add_argument("--default-entry", choices=("android", "pong-xnu"), default=None)
+    parser.add_argument("--handoff", default=None,
+                        help="reuse an existing AndroidHandoff.efi instead of building it")
     args = parser.parse_args()
     out = Path(args.out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
