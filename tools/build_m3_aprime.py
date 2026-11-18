@@ -194,6 +194,15 @@ def read_ios_config(ios_image, out):
         return cfg_path.read_text()
 
 
+def default_entry():
+    # Default boot entry: android (the user decision for M3). M3_DEFAULT=pong-xnu only for the
+    # unattended fastboot-boot test that exercises the iPadOS path of the new BootShim.
+    value = os.environ.get("M3_DEFAULT", "android")
+    if value not in ("android", "pong-xnu"):
+        raise SystemExit("M3_DEFAULT must be android or pong-xnu")
+    return value
+
+
 def new_config(existing):
     match = re.search(r"\[\[entry\]\]\s*\nid = \"pong-xnu\".*?(?=\n\[\[|\Z)",
                       existing, re.S)
@@ -204,7 +213,7 @@ def new_config(existing):
         "version = 1\n"
         "[boot]\n"
         "timeout = 10\n"
-        "default = \"android\"\n"
+        "default = \"" + default_entry() + "\"\n"
         "[kits]\n"
         "autoload = false\n"
         "[[driver]]\n"
