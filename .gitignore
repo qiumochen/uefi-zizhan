@@ -5,6 +5,7 @@ Conf/
 BootShim/BootShim.bin
 *.fd
 *.elf
+*.o
 *.efi
 *.img
 *.ramdisk

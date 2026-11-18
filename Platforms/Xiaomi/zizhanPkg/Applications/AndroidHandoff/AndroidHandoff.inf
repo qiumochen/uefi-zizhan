@@ -1,0 +1,23 @@
+## @file
+# zizhan M3 A' Android handoff action.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = AndroidHandoff
+  FILE_GUID                      = 3C9E7B5A-2D41-4F86-9A0C-6B1E8D2F4A71
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = AndroidHandoffEntry
+
+[Sources]
+  AndroidHandoff.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiLib
